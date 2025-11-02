@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="https://i.imgur.com/ePueN25_d.webp?maxwidth=760&fidelity=grand">
+    <title>Vadrifts Status</title>
+    
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #fff;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #9c88ff;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #888;
+            margin-bottom: 40px;
+        }
+        
+        .status-card {
+            background: rgba(40, 40, 40, 0.6);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(156, 136, 255, 0.2);
+        }
+        
+        .service-name {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1rem;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-operational .status-dot {
+            background-color: #22c55e;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+        }
+        
+        .status-down .status-dot {
+            background-color: #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+        
+        .status-checking .status-dot {
+            background-color: #f59e0b;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .last-checked {
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+        
+        .incident-history {
+            margin-top: 40px;
+        }
+        
+        .incident {
+            background: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid #ef4444;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+        }
+        
+        .incident-time {
+            color: #888;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Vadrifts Status</h1>
+        <p class="subtitle">Real-time status of all Vadrifts services</p>
+        
+        <div class="status-card">
+            <div class="service-name">Main Website (vadrifts.onrender.com)</div>
+            <div id="status" class="status-indicator status-checking">
+                <span class="status-dot"></span>
+                <span id="status-text">Checking...</span>
+            </div>
+            <div class="last-checked" id="last-checked">Last checked: Never</div>
+        </div>
+        
+        <div class="incident-history">
+            <h2 style="color: #9c88ff;">Recent Incidents</h2>
+            <div id="incidents">
+                <p style="color: #666;">No recent incidents</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const STATUS_URL = 'https://vadrifts.onrender.com/status-check';
+        const EXPECTED_CODE = 'VADRIFTS_ONLINE_2025';
+        const CHECK_INTERVAL = 15 * 60 * 1000;
+        
+        let incidents = JSON.parse(localStorage.getItem('vadrifts_incidents') || '[]');
+        
+        async function checkStatus() {
+            const statusEl = document.getElementById('status');
+            const statusText = document.getElementById('status-text');
+            const lastChecked = document.getElementById('last-checked');
+            
+            try {
+                const response = await fetch(STATUS_URL, {
+                    method: 'GET',
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.code === EXPECTED_CODE) {
+                        statusEl.className = 'status-indicator status-operational';
+                        statusText.textContent = 'All Systems Operational';
+                        clearDowntime();
+                    } else {
+                        throw new Error('Invalid response code');
+                    }
+                } else {
+                    throw new Error('Server returned error');
+                }
+            } catch (error) {
+                statusEl.className = 'status-indicator status-down';
+                statusText.textContent = 'Service Unavailable';
+                logIncident('Service is down or unreachable');
+            }
+            
+            const now = new Date();
+            lastChecked.textContent = `Last checked: ${now.toLocaleTimeString()}`;
+        }
+        
+        function logIncident(message) {
+            const lastIncident = incidents[0];
+            const now = new Date();
+            
+            if (!lastIncident || lastIncident.resolved) {
+                incidents.unshift({
+                    message: message,
+                    startTime: now.toISOString(),
+                    resolved: false
+                });
+                
+                localStorage.setItem('vadrifts_incidents', JSON.stringify(incidents.slice(0, 10)));
+                displayIncidents();
+            }
+        }
+        
+        function clearDowntime() {
+            if (incidents.length > 0 && !incidents[0].resolved) {
+                incidents[0].resolved = true;
+                incidents[0].endTime = new Date().toISOString();
+                localStorage.setItem('vadrifts_incidents', JSON.stringify(incidents));
+                displayIncidents();
+            }
+        }
+        
+        function displayIncidents() {
+            const incidentsEl = document.getElementById('incidents');
+            
+            if (incidents.length === 0) {
+                incidentsEl.innerHTML = '<p style="color: #666;">No recent incidents</p>';
+                return;
+            }
+            
+            incidentsEl.innerHTML = incidents.map(incident => {
+                const start = new Date(incident.startTime);
+                const end = incident.endTime ? new Date(incident.endTime) : null;
+                const duration = end ? Math.round((end - start) / 60000) : null;
+                
+                return `
+                    <div class="incident">
+                        <div>${incident.message}</div>
+                        <div class="incident-time">
+                            ${start.toLocaleString()}
+                            ${incident.resolved ? ` - Resolved after ${duration} minutes` : ' - Ongoing'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        checkStatus();
+        displayIncidents();
+        setInterval(checkStatus, CHECK_INTERVAL);
+    </script>
+</body>
+</html>
